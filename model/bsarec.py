@@ -19,7 +19,7 @@ class BSARecEncoder(nn.Module):
         block = BSARecBlock(args)
         self.blocks = nn.ModuleList([copy.deepcopy(block) for _ in range(args.num_hidden_layers)])
 
-    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=False):
+    def forward(self, hidden_states, user_freq_weights=None, output_all_encoded_layers=False):
         """前向传播函数
         
         Args:
@@ -37,7 +37,7 @@ class BSARecEncoder(nn.Module):
         
         # 依次通过每个BSARecBlock进行处理
         for layer_module in self.blocks:
-            hidden_states = layer_module(hidden_states, attention_mask)
+            hidden_states = layer_module(hidden_states, user_freq_weights)
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
                 
@@ -80,14 +80,23 @@ class BSARecModel(SequentialRecModel):
                            如果all_sequence_output为True，返回所有层的输出；
                            否则只返回最后一层的输出
         """
+
         # 获取注意力掩码，用于mask填充位置
-        extended_attention_mask = self.get_attention_mask(input_ids)
+        # extended_attention_mask = self.get_attention_mask(input_ids)
+
         # 添加位置编码
         sequence_emb = self.add_position_embedding(input_ids,user_ids)
+
+        user_emb = self.user_embeddings(user_ids)
+        user_freq_weights = self.user_freq_mlp(user_emb)
+        user_freq_weights = torch.sigmoid(user_freq_weights) # 应用Sigmoid激活函数，将权重限制在0-1范围内
+
         # 通过编码器处理序列
-        item_encoded_layers = self.item_encoder(sequence_emb,
-                                              extended_attention_mask,
-                                              output_all_encoded_layers=True)
+        item_encoded_layers = self.item_encoder(
+            sequence_emb,
+            user_freq_weights=user_freq_weights,
+            output_all_encoded_layers=True
+        )
         
         # 根据需求返回相应的输出
         if all_sequence_output:

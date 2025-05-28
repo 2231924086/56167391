@@ -12,7 +12,23 @@ class SequentialRecModel(nn.Module):
         self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
         self.user_embeddings = nn.Embedding(args.num_users, args.user_hidden_size, padding_idx=0)
         self.batch_size = args.batch_size
-        self.concat_projection = nn.Linear(args.hidden_size + args.user_hidden_size, args.hidden_size)#用于拼接序列嵌入和用户嵌入的投影层
+        # self.concat_projection = nn.Linear(args.hidden_size + args.user_hidden_size, args.hidden_size)#用于拼接序列嵌入和用户嵌入的投影层
+
+        # self.user_freq_mlp = nn.Sequential(
+        # nn.Linear(args.user_hidden_size, args.user_hidden_size // 2),
+        # nn.ReLU(),
+        # nn.Linear(args.user_hidden_size // 2, args.decomp_level)
+        # )
+
+        self.user_freq_mlp = nn.Sequential(
+        nn.Linear(args.user_hidden_size, 512),
+        nn.ReLU(),
+        nn.Linear(512, 256),
+        nn.ReLU(),
+        nn.Linear(256, 64),
+        nn.ReLU(),
+        nn.Linear(64, args.decomp_level)
+        )
 
     def add_position_embedding(self, sequence, user_ids):
         """添加位置编码到输入序列
@@ -37,7 +53,11 @@ class SequentialRecModel(nn.Module):
         item_embeddings = self.item_embeddings(sequence)
         # 获取位置的嵌入表示
         position_embeddings = self.position_embeddings(position_ids)
+
         # 获取用户的嵌入表示
+        user_embeddings = self.user_embeddings(user_ids)  # [batch, user_hidden_size]
+        user_embeddings = user_embeddings.unsqueeze(1).expand(-1, seq_length, -1)  # [batch, seq_len, user_hidden_size]
+
         user_embeddings = self.user_embeddings(user_ids)  # [batch, user_hidden_size]
         user_embeddings = user_embeddings.unsqueeze(1).expand(-1, seq_length, -1)  # [batch, seq_len, user_hidden_size]
 

@@ -214,7 +214,7 @@ class HighFrequencySignalScale(nn.Module):
         # 记录分解层数    
         self.max_lv = args.decomp_level
         
-    def forward(self, cd, ca):
+    def forward(self, cd, ca, user_freq_weights=None):
         """前向传播函数
         
         Args:
@@ -231,10 +231,15 @@ class HighFrequencySignalScale(nn.Module):
             # 1. permute改变维度顺序以进行矩阵乘法
             # 2. 应用可学习权重ww[i]和全局缩放因子srt
             # 3. permute恢复原始维度顺序
-            cd[i] = torch.mul(torch.mul(cd[i].permute(0,2,1), self.ww[i]), self.srt**2).permute(0,2,1)
+
+            # cd[i] = torch.mul(torch.mul(cd[i].permute(0,2,1), self.ww[i]), self.srt**2).permute(0,2,1)
+
+            user_scale = user_freq_weights[:, i].view(cd[i].size(0), 1, 1)
+            # cd[i] = torch.mul(torch.mul(cd[i].permute(0,2,1), self.ww[i]), self.srt**2).permute(0,2,1)
+            # cd[i] = torch.mul(cd[i], user_scale)
+            cd[i] = torch.mul(torch.mul(cd[i].permute(0,2,1), user_scale), self.srt**2).permute(0,2,1)
             
-        # 注释掉的代码是对低频分量的处理
-        #ca = torch.mul(torch.mul(ca,self.ww[i]).permute(0,2,1),self.ww1[i]).permute(0,2,1)
+        #ca = torch.mul(torch.mul(ca,self.ww[i]).permute(0,2,1),self.ww1[i]).permute(0,2,1)对低频分量的处理
         
         return ca, cd
         
@@ -275,7 +280,7 @@ class FrequencyLayer(nn.Module):
         # 是否仅保留低频信息
         self.not_restore = args.not_restore
 
-    def forward(self, input_tensor):
+    def forward(self, input_tensor, user_freq_weights=None):
         """前向传播函数
         
         Args:
@@ -290,7 +295,7 @@ class FrequencyLayer(nn.Module):
         # 进行小波变换，得到近似系数(ca)和细节系数(cd)
         ca, cd = self.fwd(input_tensor.permute(0,2,1))
         # 对高频信号进行自适应调整
-        ca, cd = self.scale(cd, ca)
+        ca, cd = self.scale(cd, ca, user_freq_weights)
         
         # 进行逆变换重构信号
         low_pass = self.inv((ca,cd)).permute(0,2,1)
@@ -328,7 +333,7 @@ class BSARecLayer(nn.Module):
         # 平衡参数，用于调节不同组件的贡献
         self.alpha = args.alpha
         
-    def forward(self, input_tensor, attention_mask):
+    def forward(self, input_tensor, user_freq_weights=None):
         """前向传播函数
         
         Args:
@@ -339,7 +344,7 @@ class BSARecLayer(nn.Module):
             hidden_states: 经过频域处理后的特征表示
         """
         # 通过频域处理层处理输入序列
-        dsp = self.filter_layer(input_tensor)
+        dsp = self.filter_layer(input_tensor, user_freq_weights)
         
         # 直接返回频域处理的结果
         hidden_states = dsp 
@@ -361,7 +366,7 @@ class BSARecBlock(nn.Module):
         # 初始化前馈网络层，用于特征转换
         self.feed_forward = FeedForward(args)
 
-    def forward(self, hidden_states, attention_mask):
+    def forward(self, hidden_states, user_freq_weights=None):
         """前向传播函数
         
         Args:
@@ -372,7 +377,7 @@ class BSARecBlock(nn.Module):
             feedforward_output: 经过频域处理和前馈网络处理后的特征表示
         """
         # 1. 通过BSARecLayer处理输入
-        layer_output = self.layer(hidden_states, attention_mask)
+        layer_output = self.layer(hidden_states, user_freq_weights)
         # 2. 通过前馈网络进一步处理
         feedforward_output = self.feed_forward(layer_output)
         return feedforward_output
