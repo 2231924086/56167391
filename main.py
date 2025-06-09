@@ -67,6 +67,7 @@ def main():
         for epoch in range(args.epochs):
             # 训练一个epoch
             trainer.train(epoch)
+
             # 在验证集上评估
             scores, _ = trainer.valid(epoch)
             # 使用MRR指标进行早停判断

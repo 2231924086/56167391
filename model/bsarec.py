@@ -119,14 +119,19 @@ class BSARecModel(SequentialRecModel):
         Returns:
             loss: 计算得到的交叉熵损失值
         """
+
         # 获取序列的编码输出
+        # seq_output = self.forward(input_ids)这里忘记了
         seq_output = self.forward(input_ids,user_ids)
+
         # 只使用序列最后一个时间步的输出进行预测
         seq_output = seq_output[:, -1, :]
         # 获取所有物品的嵌入权重
         item_emb = self.item_embeddings.weight
+
         # 计算预测分数
         logits = torch.matmul(seq_output, item_emb.transpose(0, 1))
+
         # 使用交叉熵计算损失
         loss = nn.CrossEntropyLoss()(logits, answers)
 
