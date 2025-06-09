@@ -148,6 +148,7 @@ class Trainer:
             for i, batch in rec_data_iter:
                 batch = tuple(t.to(self.device) for t in batch)
                 user_ids, input_ids, answers, _, _ = batch
+
                 # 获取模型预测输出
                 recommend_output = self.model.predict(input_ids, user_ids)
                 recommend_output = recommend_output[:, -1, :]  # 只取序列最后一个时间步的预测结果

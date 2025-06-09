@@ -237,7 +237,76 @@ class HighFrequencySignalScale(nn.Module):
         #ca = torch.mul(torch.mul(ca,self.ww[i]).permute(0,2,1),self.ww1[i]).permute(0,2,1)
         
         return ca, cd
-        
+
+class UserAdaptiveFrequencyGate(nn.Module):
+    """用户适应性频域门控机制"""
+
+    def __init__(self, args):
+        super(UserAdaptiveFrequencyGate, self).__init__()
+        self.hidden_size = args.hidden_size
+        self.user_hidden_size = args.user_hidden_size
+        self.decomp_level = args.decomp_level
+
+        # 用户特征到频域控制参数的映射
+        self.user_to_freq_control = nn.Linear(args.user_hidden_size, args.hidden_size * 2)
+
+        # 为每个分解层级生成门控参数
+        self.level_gates = nn.ModuleList([
+            nn.Linear(args.hidden_size * 2, args.hidden_size)
+            for _ in range(args.decomp_level)
+        ])
+
+        # 低频分量的门控
+        self.ca_gate = nn.Linear(args.hidden_size * 2, args.hidden_size)
+
+        # 激活函数
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+
+        # self._init_weights();#之后看情况再加
+
+    def forward(self, ca, cd, user_embeddings):
+        """
+        Args:
+            ca: 低频近似系数 [batch, hidden, seq_len]
+            cd: 高频细节系数列表，每个元素形状为 [batch, hidden, seq_len]
+            user_embeddings: 用户嵌入 [batch, user_hidden_size]
+        """
+        batch_size = user_embeddings.size(0)
+
+        # 将用户嵌入映射到频域控制空间
+        freq_control = self.user_to_freq_control(user_embeddings)  # [batch, hidden*2]
+
+        # 个性化调节低频分量
+        ca_control = self.ca_gate(freq_control)  # [batch, hidden]
+        ca_gate_weights = self.sigmoid(ca_control).unsqueeze(-1)  # [batch, hidden, 1]
+        ca_modulation = self.tanh(ca_control).unsqueeze(-1)  # [batch, hidden, 1]
+
+        # 门控 + 调制的组合方式
+        personalized_ca = ca * ca_gate_weights + ca_modulation * (1 - ca_gate_weights)
+
+        # 个性化调节每个高频分量
+        personalized_cd = []
+        for i, cd_level in enumerate(cd):
+            # 为每个分解层级生成特定的门控参数
+            level_control = self.level_gates[i](freq_control)  # [batch, hidden]
+            level_gate_weights = self.sigmoid(level_control).unsqueeze(-1)  # [batch, hidden, 1]
+            level_modulation = self.tanh(level_control).unsqueeze(-1)  # [batch, hidden, 1]
+
+            # 应用个性化调节
+            personalized_cd_level = cd_level * level_gate_weights + level_modulation * (1 - level_gate_weights)
+            personalized_cd.append(personalized_cd_level)
+
+        return personalized_ca, personalized_cd
+
+    def _init_weights(self):
+        """初始化权重以稳定训练"""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+
 class FrequencyLayer(nn.Module):
     """频域处理层
     
@@ -275,6 +344,8 @@ class FrequencyLayer(nn.Module):
         # 是否仅保留低频信息
         self.not_restore = args.not_restore
 
+        self.user_freq_gate = UserAdaptiveFrequencyGate(args)
+
     def forward(self, input_tensor,user_embeddings):
         """前向传播函数
         
@@ -291,6 +362,8 @@ class FrequencyLayer(nn.Module):
         ca, cd = self.fwd(input_tensor.permute(0,2,1))
         # 对高频信号进行自适应调整
         ca, cd = self.scale(cd, ca)
+
+        ca, cd = self.user_freq_gate(ca, cd, user_embeddings)
         
         # 进行逆变换重构信号
         low_pass = self.inv((ca,cd)).permute(0,2,1)
