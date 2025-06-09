@@ -84,10 +84,10 @@ class BSARecModel(SequentialRecModel):
         extended_attention_mask = self.get_attention_mask(input_ids)#这个没用
 
         # 添加位置编码
-        sequence_emb = self.add_position_embedding(input_ids)
+        sequence_emb = self.add_position_embedding(input_ids)#[batch_size, seq_len, hidden_size]
 
         # 获取用户的嵌入表示
-        user_embeddings = self.user_embeddings(user_ids)
+        user_embeddings = self.user_embeddings(user_ids)#[batch_size, user_hidden_size]
 
         # 通过编码器处理序列
         item_encoded_layers = self.item_encoder(sequence_emb,
