@@ -19,7 +19,7 @@ class BSARecEncoder(nn.Module):
         block = BSARecBlock(args)
         self.blocks = nn.ModuleList([copy.deepcopy(block) for _ in range(args.num_hidden_layers)])
 
-    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=False):
+    def forward(self, hidden_states,user_embeddings, attention_mask, output_all_encoded_layers=False):
         """前向传播函数
         
         Args:
@@ -37,7 +37,7 @@ class BSARecEncoder(nn.Module):
         
         # 依次通过每个BSARecBlock进行处理
         for layer_module in self.blocks:
-            hidden_states = layer_module(hidden_states, attention_mask)
+            hidden_states = layer_module(hidden_states,user_embeddings, attention_mask)
             if output_all_encoded_layers:
                 all_encoder_layers.append(hidden_states)
                 
@@ -81,11 +81,17 @@ class BSARecModel(SequentialRecModel):
                            否则只返回最后一层的输出
         """
         # 获取注意力掩码，用于mask填充位置
-        extended_attention_mask = self.get_attention_mask(input_ids)
+        extended_attention_mask = self.get_attention_mask(input_ids)#这个没用
+
         # 添加位置编码
-        sequence_emb = self.add_position_embedding(input_ids,user_ids)
+        sequence_emb = self.add_position_embedding(input_ids)
+
+        # 获取用户的嵌入表示
+        user_embeddings = self.user_embeddings(user_ids)
+
         # 通过编码器处理序列
         item_encoded_layers = self.item_encoder(sequence_emb,
+                                                user_embeddings,
                                               extended_attention_mask,
                                               output_all_encoded_layers=True)
         
@@ -112,6 +118,7 @@ class BSARecModel(SequentialRecModel):
         """
         # 获取序列的编码输出
         seq_output = self.forward(input_ids,user_ids)
+
         # 只使用序列最后一个时间步的输出进行预测
         seq_output = seq_output[:, -1, :]
         # 获取所有物品的嵌入权重

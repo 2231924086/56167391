@@ -8,13 +8,14 @@ class SequentialRecModel(nn.Module):
     def __init__(self, args):
         super(SequentialRecModel, self).__init__()
         self.args = args
-        self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
-        self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
-        self.user_embeddings = nn.Embedding(args.num_users, args.user_hidden_size, padding_idx=0)
-        self.batch_size = args.batch_size
-        self.concat_projection = nn.Linear(args.hidden_size + args.user_hidden_size, args.hidden_size)#用于拼接序列嵌入和用户嵌入的投影层
 
-    def add_position_embedding(self, sequence, user_ids):
+        self.item_embeddings = nn.Embedding(args.item_size, args.hidden_size, padding_idx=0)
+        self.user_embeddings = nn.Embedding(args.num_users, args.user_hidden_size, padding_idx=0)
+        self.position_embeddings = nn.Embedding(args.max_seq_length, args.hidden_size)
+
+        self.batch_size = args.batch_size
+
+    def add_position_embedding(self, sequence):
         """添加位置编码到输入序列
 
         将item embeddings和position embeddings相加，然后进行归一化和dropout处理。
@@ -37,17 +38,9 @@ class SequentialRecModel(nn.Module):
         item_embeddings = self.item_embeddings(sequence)
         # 获取位置的嵌入表示
         position_embeddings = self.position_embeddings(position_ids)
-        # 获取用户的嵌入表示
-        user_embeddings = self.user_embeddings(user_ids)  # [batch, user_hidden_size]
-        user_embeddings = user_embeddings.unsqueeze(1).expand(-1, seq_length, -1)  # [batch, seq_len, user_hidden_size]
 
         # 将物品嵌入和位置嵌入相加
         sequence_emb = item_embeddings + position_embeddings
-
-        # sequence_emb += user_embeddings
-
-        # concatenated_emb = torch.cat([sequence_emb, user_embeddings], dim=-1)  # [batch, seq_len, hidden*2]
-        # sequence_emb = self.concat_projection(concatenated_emb)  # [batch, seq_len, hidden]
 
         # 层归一化，标准化特征分布
         sequence_emb = self.LayerNorm(sequence_emb)

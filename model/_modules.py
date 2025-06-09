@@ -275,7 +275,7 @@ class FrequencyLayer(nn.Module):
         # 是否仅保留低频信息
         self.not_restore = args.not_restore
 
-    def forward(self, input_tensor):
+    def forward(self, input_tensor,user_embeddings):
         """前向传播函数
         
         Args:
@@ -328,7 +328,7 @@ class BSARecLayer(nn.Module):
         # 平衡参数，用于调节不同组件的贡献
         self.alpha = args.alpha
         
-    def forward(self, input_tensor, attention_mask):
+    def forward(self, input_tensor,user_embeddings, attention_mask):
         """前向传播函数
         
         Args:
@@ -339,7 +339,7 @@ class BSARecLayer(nn.Module):
             hidden_states: 经过频域处理后的特征表示
         """
         # 通过频域处理层处理输入序列
-        dsp = self.filter_layer(input_tensor)
+        dsp = self.filter_layer(input_tensor,user_embeddings)
         
         # 直接返回频域处理的结果
         hidden_states = dsp 
@@ -361,7 +361,7 @@ class BSARecBlock(nn.Module):
         # 初始化前馈网络层，用于特征转换
         self.feed_forward = FeedForward(args)
 
-    def forward(self, hidden_states, attention_mask):
+    def forward(self, hidden_states,user_embeddings, attention_mask):
         """前向传播函数
         
         Args:
@@ -372,9 +372,11 @@ class BSARecBlock(nn.Module):
             feedforward_output: 经过频域处理和前馈网络处理后的特征表示
         """
         # 1. 通过BSARecLayer处理输入
-        layer_output = self.layer(hidden_states, attention_mask)
+        layer_output = self.layer(hidden_states,user_embeddings, attention_mask)
+
         # 2. 通过前馈网络进一步处理
         feedforward_output = self.feed_forward(layer_output)
+
         return feedforward_output
 
 
